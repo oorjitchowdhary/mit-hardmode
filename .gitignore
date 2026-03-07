@@ -1,0 +1,43 @@
+# Environment & secrets
+.env
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+*.egg
+
+# Models (large binary files — track with Git LFS if needed)
+models/*.hef
+models/*.rpk
+models/*.tflite
+models/*.onnx
+models/*.pt
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ruff / Black cache
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Logs / captures
+*.log
+captures/
