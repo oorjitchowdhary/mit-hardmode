@@ -23,10 +23,11 @@ SYSTEM_PROMPT: str = (
 
 # ── OLED display — Inland 1.3″ SH1106, 128×64, I2C ──────────────────────────
 OLED_I2C_PORT: int = int(os.getenv("OLED_I2C_PORT", "1"))
-# Default 0x3C; pull SA0 high on the module for 0x3D
-OLED_I2C_ADDRESS: int = int(os.getenv("OLED_I2C_ADDRESS", "0x3C"), 16)
 OLED_WIDTH: int = 128
 OLED_HEIGHT: int = 64
+# SPI GPIO pins for DC (data/command) and RST (reset)
+SPI_DC_GPIO: int = int(os.getenv("SPI_DC_GPIO", "24"))
+SPI_RST_GPIO: int = int(os.getenv("SPI_RST_GPIO", "25"))
 
 # ── Raspberry Pi AI Camera (IMX500) ──────────────────────────────────────────
 CAMERA_PREVIEW_SIZE: tuple[int, int] = (640, 480)

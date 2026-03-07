@@ -25,7 +25,7 @@ import textwrap
 
 from PIL import Image, ImageDraw, ImageFont
 
-from config.settings import OLED_HEIGHT, OLED_I2C_ADDRESS, OLED_I2C_PORT, OLED_WIDTH
+from config.settings import OLED_HEIGHT, OLED_WIDTH, SPI_DC_GPIO, SPI_RST_GPIO
 
 # Font metrics for the default bitmap font
 _CHAR_W = 6   # pixels per character (default font)
@@ -48,10 +48,10 @@ class OLEDDisplay:
     """
 
     def __init__(self) -> None:
-        from luma.core.interface.serial import i2c
+        from luma.core.interface.serial import spi
         from luma.oled.device import sh1106
 
-        serial = i2c(port=OLED_I2C_PORT, address=OLED_I2C_ADDRESS)
+        serial = spi(device=0, port=0, gpio_DC=SPI_DC_GPIO, gpio_RST=SPI_RST_GPIO)
         self._device = sh1106(serial, width=OLED_WIDTH, height=OLED_HEIGHT)
         self._font = ImageFont.load_default()
 
