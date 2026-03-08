@@ -5,14 +5,20 @@ import time
 import threading
 
 
+# gpiozero Servo range: -1.0 = 0°, 0.0 = 90°, 1.0 = 180°
+_POS_0 = -1.0    # 0 degrees
+_POS_180 = 1.0   # 180 degrees
+_POS_90 = 0.0    # 90 degrees (center)
+_STEPS = 30      # number of steps per sweep
+
+
 class ServoController:
     """
-    Controls a servo motor via gpiozero on a PWM-capable GPIO pin.
+    Sweeps a servo continuously from 0° to 180° and back.
 
-    Starts with a medium-speed idle sweep. On vibe updates:
-      Good → slow gentle sweep
-      Bad  → fast aggressive sweep
-    Then returns to idle.
+    Idle:  medium speed
+    Good:  slow down and stop at 90°
+    Bad:   speed up
     """
 
     def __init__(self, gpio_pin: int = 12) -> None:
@@ -21,25 +27,24 @@ class ServoController:
 
         factory = LGPIOFactory()
         self._servo = Servo(gpio_pin, pin_factory=factory)
-        self._servo.mid()
+        self._servo.value = _POS_90
         self._lock = threading.Lock()
         self._running = True
-        # Delay between sweep steps — lower = faster
-        self._speed = 0.04  # medium idle speed
+        self._speed = 0.04  # seconds per step (medium idle)
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
     def _loop(self) -> None:
-        """Continuous sweep at current speed."""
+        """Continuous 0°→180°→0° sweep at current speed."""
         while self._running:
             with self._lock:
                 speed = self._speed
             if speed is None:
-                # Stopped (good vibe) — hold center
-                self._servo.mid()
+                self._servo.value = _POS_90
                 time.sleep(0.1)
                 continue
-            for pos in _interpolate(-1.0, 1.0, steps=30):
+            # Sweep 0° → 180°
+            for pos in _interpolate(_POS_0, _POS_180, _STEPS):
                 if not self._running:
                     return
                 with self._lock:
@@ -48,7 +53,8 @@ class ServoController:
                     break
                 self._servo.value = pos
                 time.sleep(speed)
-            for pos in _interpolate(1.0, -1.0, steps=30):
+            # Sweep 180° → 0°
+            for pos in _interpolate(_POS_180, _POS_0, _STEPS):
                 if not self._running:
                     return
                 with self._lock:
@@ -59,20 +65,19 @@ class ServoController:
                 time.sleep(speed)
 
     def good_vibe(self) -> None:
-        """Slow down and stop."""
+        """Slow down and stop at 90°."""
         with self._lock:
             self._speed = None
 
     def bad_vibe(self) -> None:
-        """Speed up."""
+        """Speed up the sweep."""
         with self._lock:
             self._speed = 0.015
 
     def stop(self) -> None:
         self._running = False
-        self._reaction_event.set()  # unblock loop
         self._thread.join(timeout=2.0)
-        self._servo.mid()
+        self._servo.value = _POS_90
         self._servo.detach()
 
     def __enter__(self) -> "ServoController":
