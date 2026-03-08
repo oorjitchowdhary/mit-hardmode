@@ -177,12 +177,12 @@ def main() -> None:
 
     # --- Thread 3: periodic vibe analysis via Claude ---
     def vibe_analyzer():
-        last_check = time.time()
         while running.is_set():
-            time.sleep(1.0)
-            if time.time() - last_check < VIBE_CHECK_INTERVAL:
-                continue
-            last_check = time.time()
+            # Collect transcript for 15 seconds
+            print("\n[vibe] Collecting for 15s...")
+            collect_end = time.time() + VIBE_CHECK_INTERVAL
+            while time.time() < collect_end and running.is_set():
+                time.sleep(0.5)
 
             with lock:
                 if not transcript_lines:
@@ -191,7 +191,7 @@ def main() -> None:
                 transcript_lines.clear()
 
             full_transcript = "\n".join(recent)
-            print("\n[vibe] Analyzing conversation vibe...")
+            print("[vibe] Analyzing conversation vibe...")
             display.show_status("Vibe Check", "Analyzing...")
 
             response = claude.ask(
@@ -231,6 +231,21 @@ def main() -> None:
             elif score == 0:
                 print("[motor] Bad vibe — speeding up for 10 revolutions...")
                 motor.bad_vibe()
+
+            # Wait 15s in neutral (motor handles its own return to normal)
+            print("[vibe] Neutral period — 15s until next check...")
+            with lock:
+                state["vibe"] = "Neutral"
+                state["score"] = -1
+                transcript_lines.clear()  # fresh start for next round
+            update_display()
+            neutral_end = time.time() + 15.0
+            while time.time() < neutral_end and running.is_set():
+                remaining = int(neutral_end - time.time())
+                with lock:
+                    state["vibe"] = f"Neutral ({remaining}s)"
+                update_display()
+                time.sleep(1.0)
 
     t1 = threading.Thread(target=audio_sender, daemon=True)
     t2 = threading.Thread(target=transcript_receiver, daemon=True)
