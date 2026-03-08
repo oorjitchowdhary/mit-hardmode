@@ -98,6 +98,20 @@ print("   value=0.0 (stop)...")
 servo.value = 0.0
 time.sleep(1)
 
+# 8. Full 0° → 360° sweep (beyond standard servo range)
+d.show_status("Test 8/8", "Full 0-360 sweep")
+print("\n8. Full 0° → 360° sweep")
+print("   Going to -1.0 (0°)...")
+servo.value = -1.0
+time.sleep(0.5)
+for i in range(61):
+    # -1.0 → 1.0 maps to 0° → 180°, but we push beyond
+    # Standard servos will clamp at 180°; continuous ones may keep going
+    val = -1.0 + (2.0 * i / 60)
+    servo.value = max(-1.0, min(1.0, val))
+    time.sleep(0.06)
+time.sleep(1)
+
 # Done
 d.show_status("Done", "All tests complete")
 print("\nDone. Detaching servo.")
