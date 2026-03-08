@@ -3,7 +3,7 @@ Real-time conversation vibe check.
 
 Streams audio from the USB mic to Deepgram for transcription with speaker
 diarization, then periodically asks Claude to assess the conversation vibe.
-Results are shown on the OLED display and a servo reacts physically.
+Results are shown on the OLED display and a stepper motor reacts physically.
 
 Usage:
     python3 scripts/test_vibe.py
@@ -31,7 +31,7 @@ from config.settings import (
 )
 from src.display.oled import OLEDDisplay
 from src.llm.client import ClaudeClient
-from src.servo.motor import ServoController
+from src.motor.stepper import StepperClock
 
 # How often (in seconds) to send transcript to Claude for vibe analysis
 VIBE_CHECK_INTERVAL = 15.0
@@ -56,7 +56,7 @@ def main() -> None:
 
     display = OLEDDisplay()
     claude = ClaudeClient()
-    servo = ServoController()
+    motor = StepperClock()
     transcript_lines: list[str] = []
     state = {"vibe": "...", "score": -1}  # score: 1=good, 0=bad, -1=unknown
     lock = threading.Lock()
@@ -122,6 +122,7 @@ def main() -> None:
         additional_headers={"Authorization": f"Token {DEEPGRAM_API_KEY}"},
     )
     print("[vibe] Connected. Listening...")
+    print("[motor] Clock ticking at normal speed...")
     display.show_status("Vibe Check", "Listening...")
 
     # --- Thread 1: stream mic audio to Deepgram ---
@@ -216,18 +217,20 @@ def main() -> None:
                 elif resp_line.startswith("VIBE:"):
                     vibe = resp_line.split(":", 1)[1].strip()
 
-            print(f"[vibe] score={score} vibe={vibe}\n")
+            print(f"[vibe] score={score} vibe={vibe}")
 
             with lock:
                 state["vibe"] = vibe
                 state["score"] = score
             update_display()
 
-            # Drive servo based on score
+            # Drive stepper motor based on score
             if score == 1:
-                threading.Thread(target=servo.good_vibe, daemon=True).start()
+                print("[motor] Good vibe — slowing down and stopping...")
+                motor.good_vibe()
             elif score == 0:
-                threading.Thread(target=servo.bad_vibe, daemon=True).start()
+                print("[motor] Bad vibe — speeding up for 10 revolutions...")
+                motor.bad_vibe()
 
     t1 = threading.Thread(target=audio_sender, daemon=True)
     t2 = threading.Thread(target=transcript_receiver, daemon=True)
@@ -246,7 +249,7 @@ def main() -> None:
         ws.close()
     except Exception:
         pass
-    servo.stop()
+    motor.stop()
     display.clear()
     print("[vibe] Done.")
 
