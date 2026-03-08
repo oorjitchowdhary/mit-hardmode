@@ -130,18 +130,10 @@ class StepperClock:
             time.sleep(0.1)
 
     def _do_bad_reaction(self) -> None:
-        """Spin fast for several revolutions, then hold until mode changes."""
-        total_steps = STEPS_PER_REV * BAD_REVOLUTIONS
-        for _ in range(total_steps):
-            if not self._running or self._get_mode() != "bad":
-                self._release()
-                return
+        """Spin fast continuously until mode changes."""
+        while self._running and self._get_mode() == "bad":
             self._do_step(FAST_DELAY)
         self._release()
-
-        # Hold until mode changes externally
-        while self._running and self._get_mode() == "bad":
-            time.sleep(0.1)
 
     def _sleep_check(self, duration: float, expected_mode: str) -> None:
         """Sleep that exits early if mode changes or shutdown."""

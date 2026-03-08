@@ -194,6 +194,7 @@ def main() -> None:
             # Phase 2: Analyze
             with lock:
                 if not transcript_lines:
+                    print("[vibe] No speech detected, listening again...")
                     continue
                 recent = list(transcript_lines)
                 transcript_lines.clear()
@@ -235,30 +236,19 @@ def main() -> None:
                 state["score"] = score
             update_display()
 
-            # Drive stepper motor based on score
+            # Drive stepper motor based on score — hold for 15s
             if score == 1:
-                print("[motor] Good vibe — slowing down and stopping...")
+                print("[motor] Good vibe — stopping for 15s...")
                 motor.good_vibe()
             elif score == 0:
-                print("[motor] Bad vibe — speeding up...")
+                print("[motor] Bad vibe — fast for 15s...")
                 motor.bad_vibe()
 
-            # Hold the result on screen for 10s while motor reacts
-            time.sleep(10.0)
+            # Hold result on screen for 15s while motor reacts
+            time.sleep(15.0)
 
-            # Phase 4: Neutral — motor back to normal ticking, 15s countdown
-            print("[vibe] Neutral — 15s cooldown...")
+            # Back to normal ticking, start next listening cycle
             motor.set_normal()
-            with lock:
-                transcript_lines.clear()
-            neutral_end = time.time() + 15.0
-            while time.time() < neutral_end and running.is_set():
-                remaining = int(neutral_end - time.time())
-                with lock:
-                    state["vibe"] = f"Neutral ({remaining}s)"
-                    state["score"] = -1
-                update_display()
-                time.sleep(1.0)
 
     t1 = threading.Thread(target=audio_sender, daemon=True)
     t2 = threading.Thread(target=transcript_receiver, daemon=True)
