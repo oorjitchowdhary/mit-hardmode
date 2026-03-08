@@ -75,7 +75,7 @@ def main() -> None:
 
         # Title bar
         draw.rectangle((0, 0, OLED_WIDTH - 1, 13), fill=1)
-        draw.text((1, 3), "VIBE CHECK", font=font, fill=0)
+        draw.text((1, 3), "VIBE", font=font, fill=0)
 
         # Score indicator
         if score == 1:
