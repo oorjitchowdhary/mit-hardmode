@@ -67,3 +67,6 @@ AUDIO_SAMPLE_RATE: int = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
 AUDIO_CHANNELS: int = int(os.getenv("AUDIO_CHANNELS", "1"))
 AUDIO_CHUNK_SIZE: int = 1024          # frames per callback block
 AUDIO_RECORD_SECONDS: float = 5.0    # default capture duration
+
+# ── Deepgram ─────────────────────────────────────────────────────────────────
+DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")

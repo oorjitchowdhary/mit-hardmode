@@ -18,6 +18,9 @@ dependencies = [
     # Audio — I2S MEMS microphone via sounddevice/ALSA
     "sounddevice>=0.4.6",
     "scipy>=1.11.0",
+    # Real-time transcription with speaker diarization
+    "deepgram-sdk>=3.0.0",
+    "websockets>=12.0",
     # NOTE: picamera2 and hailort must be installed via system packages on the Pi.
     # See scripts/setup.sh for instructions.
 ]
