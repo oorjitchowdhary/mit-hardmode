@@ -58,9 +58,9 @@ def main() -> None:
     display = OLEDDisplay()
     claude = ClaudeClient()
     motor = StepperClock()
-    yamnet = AudioClassifier()
-    yamnet.start()
-    print("[yamnet] Audio classifier loaded.")
+    audio_clf = AudioClassifier(sample_rate=AUDIO_SAMPLE_RATE)
+    audio_clf.start()
+    print("[audio] Classifier ready (numpy spectral analysis).")
     transcript_lines: list[str] = []
     audio_buffer: list[np.ndarray] = []  # raw audio chunks for YAMNet
     state = {"vibe": "...", "score": -1}  # score: 1=good, 0=bad, -1=unknown
@@ -213,8 +213,8 @@ def main() -> None:
 
             audio_result = None
             if len(raw_audio) > AUDIO_SAMPLE_RATE:  # need at least 1s of audio
-                audio_result = yamnet.classify(raw_audio, sample_rate=AUDIO_SAMPLE_RATE)
-                print(f"[yamnet] category={audio_result['category']} "
+                audio_result = audio_clf.classify(raw_audio, sample_rate=AUDIO_SAMPLE_RATE)
+                print(f"[audio] category={audio_result['category']} "
                       f"music={audio_result['music_score']:.2f} "
                       f"speech={audio_result['speech_score']:.2f} "
                       f"top={audio_result['top_class']} "
@@ -331,7 +331,7 @@ def main() -> None:
     except Exception:
         pass
     motor.stop()
-    yamnet.stop()
+    audio_clf.stop()
     display.clear()
     print("[vibe] Done.")
 

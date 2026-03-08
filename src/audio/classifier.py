@@ -1,161 +1,131 @@
 """
-Audio classifier using YAMNet (TFLite) — detects music, speech, silence, etc.
+Lightweight audio classifier — detects music, speech, and silence using
+spectral analysis. No ML frameworks required, just numpy + scipy.
 
-YAMNet classifies audio into 521 AudioSet classes. We group them into
-categories relevant to brain rot detection:
-  - "music"   → background music, singing, trending audio
-  - "speech"  → conversation, narration
-  - "silence" → no significant audio
-  - "other"   → everything else
-
-Model setup (run once on the Pi):
-    python -m src.audio.classifier --download
+Music detection: consistent energy with strong spectral peaks (bass, rhythm)
+Speech detection: variable energy, formant frequencies (300-3000 Hz)
+Silence: low overall energy
 """
 from __future__ import annotations
 
-import csv
-import os
-import urllib.request
-from pathlib import Path
-
 import numpy as np
-
-from config.settings import MODELS_DIR
-
-YAMNET_TFLITE_URL = "https://storage.googleapis.com/tfhub-lite-models/google/lite-model/yamnet/tflite/1.tflite"
-YAMNET_CLASSES_URL = "https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv"
-
-YAMNET_MODEL_PATH = MODELS_DIR / "yamnet.tflite"
-YAMNET_CLASSES_PATH = MODELS_DIR / "yamnet_class_map.csv"
-
-# YAMNet expects 16kHz mono audio
-YAMNET_SAMPLE_RATE = 16000
-
-# Class indices that indicate "music" / brain rot media consumption
-# These are looked up from yamnet_class_map.csv at load time
-MUSIC_KEYWORDS = {
-    "music", "singing", "song", "rapping", "hip hop", "pop music",
-    "electronic music", "dance music", "techno", "beat", "drum machine",
-    "bass", "soundtrack", "theme music", "jingle", "ringtone",
-    "musical instrument", "guitar", "piano", "keyboard", "synthesizer",
-    "drum", "percussion", "reggaeton", "funk", "disco", "rock music",
-    "heavy metal", "punk rock", "grunge", "progressive rock",
-    "rock and roll", "jazz", "blues", "soul music", "rhythm and blues",
-    "country", "swing music", "bluegrass", "flamenco", "folk music",
-}
-
-SPEECH_KEYWORDS = {
-    "speech", "conversation", "narration", "child speech",
-    "female speech", "male speech",
-}
 
 
 class AudioClassifier:
-    """Classify audio chunks as music, speech, silence, or other using YAMNet."""
+    """Classify audio as music, speech, or silence using spectral features."""
 
-    def __init__(self) -> None:
-        self._interpreter = None
-        self._class_names: list[str] = []
-        self._music_indices: set[int] = set()
-        self._speech_indices: set[int] = set()
+    def __init__(self, sample_rate: int = 44100) -> None:
+        self._sample_rate = sample_rate
 
     def start(self) -> None:
-        """Load model and class map."""
-        _ensure_downloaded()
+        """No-op — included for interface compatibility."""
+        pass
 
-        import tflite_runtime.interpreter as tflite
+    def stop(self) -> None:
+        """No-op — included for interface compatibility."""
+        pass
 
-        self._interpreter = tflite.Interpreter(str(YAMNET_MODEL_PATH))
-        self._interpreter.allocate_tensors()
-
-        # Load class names
-        self._class_names = []
-        with open(YAMNET_CLASSES_PATH) as f:
-            reader = csv.reader(f)
-            next(reader)  # skip header
-            for row in reader:
-                self._class_names.append(row[2].strip().lower())
-
-        # Build index sets
-        for i, name in enumerate(self._class_names):
-            if any(kw in name for kw in MUSIC_KEYWORDS):
-                self._music_indices.add(i)
-            if any(kw in name for kw in SPEECH_KEYWORDS):
-                self._speech_indices.add(i)
-
-    def classify(self, audio: np.ndarray, sample_rate: int = YAMNET_SAMPLE_RATE) -> dict:
+    def classify(self, audio: np.ndarray, sample_rate: int | None = None) -> dict:
         """
         Classify an audio chunk.
 
         Args:
             audio: float32 mono numpy array
-            sample_rate: sample rate of the audio (will resample to 16kHz if needed)
+            sample_rate: sample rate (defaults to constructor value)
 
         Returns:
             dict with keys:
-                "category": "music" | "speech" | "silence" | "other"
+                "category": "music" | "speech" | "silence"
                 "music_score": float (0-1)
                 "speech_score": float (0-1)
-                "top_class": str (top predicted class name)
+                "energy": float
                 "is_brainrot": bool
         """
-        if self._interpreter is None:
-            raise RuntimeError("Call start() first")
-
-        # Resample to 16kHz if needed
-        if sample_rate != YAMNET_SAMPLE_RATE:
-            import resampy
-            audio = resampy.resample(audio, sample_rate, YAMNET_SAMPLE_RATE)
-
-        # Ensure float32 and normalize
+        sr = sample_rate or self._sample_rate
         audio = audio.astype(np.float32)
-        if np.max(np.abs(audio)) > 0:
-            audio = audio / np.max(np.abs(audio))
 
-        # Run inference
-        input_details = self._interpreter.get_input_details()
-        output_details = self._interpreter.get_output_details()
+        # Overall energy (RMS)
+        rms = float(np.sqrt(np.mean(audio ** 2)))
 
-        self._interpreter.resize_tensor_input(input_details[0]["index"], audio.shape)
-        self._interpreter.allocate_tensors()
-        self._interpreter.set_tensor(input_details[0]["index"], audio)
-        self._interpreter.invoke()
+        if rms < 0.005:
+            return {
+                "category": "silence",
+                "music_score": 0.0,
+                "speech_score": 0.0,
+                "energy": rms,
+                "is_brainrot": False,
+            }
 
-        # Scores shape: (n_frames, 521)
-        scores = self._interpreter.get_tensor(output_details[0]["index"])
-        avg_scores = np.mean(scores, axis=0)
+        # Compute FFT over the full clip
+        n = len(audio)
+        fft = np.abs(np.fft.rfft(audio))
+        freqs = np.fft.rfftfreq(n, d=1.0 / sr)
 
-        # Aggregate music and speech scores
-        music_score = float(np.max([avg_scores[i] for i in self._music_indices]) if self._music_indices else 0)
-        speech_score = float(np.max([avg_scores[i] for i in self._speech_indices]) if self._speech_indices else 0)
+        # Frequency band energies
+        def band_energy(low: float, high: float) -> float:
+            mask = (freqs >= low) & (freqs < high)
+            return float(np.mean(fft[mask] ** 2)) if np.any(mask) else 0.0
 
-        top_idx = int(np.argmax(avg_scores))
-        top_class = self._class_names[top_idx] if top_idx < len(self._class_names) else "unknown"
-        top_score = float(avg_scores[top_idx])
+        bass = band_energy(20, 300)       # bass / beat
+        mid = band_energy(300, 3000)      # speech formants
+        high = band_energy(3000, 8000)    # sibilants, cymbals
+        total = bass + mid + high + 1e-10
+
+        bass_ratio = bass / total
+        mid_ratio = mid / total
+        high_ratio = high / total
+
+        # Analyze energy variation over time (split into 0.5s chunks)
+        chunk_size = max(1, int(sr * 0.5))
+        chunks = [audio[i:i + chunk_size] for i in range(0, len(audio), chunk_size) if len(audio[i:i + chunk_size]) > chunk_size // 2]
+        chunk_rms = [float(np.sqrt(np.mean(c ** 2))) for c in chunks]
+
+        if len(chunk_rms) > 1:
+            energy_std = float(np.std(chunk_rms))
+            energy_mean = float(np.mean(chunk_rms))
+            energy_variation = energy_std / (energy_mean + 1e-10)
+        else:
+            energy_variation = 0.0
+
+        # Spectral flatness (how "noisy" vs "tonal" the signal is)
+        # Music tends to be more tonal (lower flatness in specific bands)
+        log_fft = np.log(fft + 1e-10)
+        spectral_flatness = float(np.exp(np.mean(log_fft)) / (np.mean(fft) + 1e-10))
+
+        # --- Scoring ---
+        # Music: strong bass, consistent energy, tonal
+        music_score = 0.0
+        music_score += min(bass_ratio * 2.0, 0.4)         # bass presence
+        music_score += max(0, 0.3 - energy_variation) * 1.0  # consistent energy
+        music_score += max(0, 0.3 - spectral_flatness) * 0.5  # tonal content
+        music_score += min(high_ratio * 1.5, 0.2)         # cymbals/hi-hats
+        music_score = min(music_score, 1.0)
+
+        # Speech: mid-range dominant, variable energy
+        speech_score = 0.0
+        speech_score += min(mid_ratio * 1.5, 0.4)         # formant range
+        speech_score += min(energy_variation * 2.0, 0.3)   # natural variation
+        speech_score += max(0, 0.5 - bass_ratio) * 0.3    # less bass than music
+        speech_score = min(speech_score, 1.0)
 
         # Determine category
-        if top_score < 0.1:
-            category = "silence"
-        elif top_idx in self._music_indices:
+        if music_score > speech_score and music_score > 0.35:
             category = "music"
-        elif top_idx in self._speech_indices:
+        elif speech_score > 0.25:
             category = "speech"
         else:
             category = "other"
 
-        # Brain rot = music playing without meaningful speech
-        is_brainrot = music_score > 0.3 and speech_score < 0.2
+        # Brain rot = music playing without much speech
+        is_brainrot = category == "music" and music_score > 0.4 and speech_score < 0.3
 
         return {
             "category": category,
-            "music_score": music_score,
-            "speech_score": speech_score,
-            "top_class": top_class,
+            "music_score": round(music_score, 3),
+            "speech_score": round(speech_score, 3),
+            "energy": round(rms, 4),
             "is_brainrot": is_brainrot,
         }
-
-    def stop(self) -> None:
-        self._interpreter = None
 
     def __enter__(self) -> "AudioClassifier":
         self.start()
@@ -163,27 +133,3 @@ class AudioClassifier:
 
     def __exit__(self, *_: object) -> None:
         self.stop()
-
-
-def _ensure_downloaded() -> None:
-    """Download YAMNet model and class map if not present."""
-    os.makedirs(MODELS_DIR, exist_ok=True)
-
-    if not YAMNET_MODEL_PATH.exists():
-        print(f"[yamnet] Downloading model to {YAMNET_MODEL_PATH}...")
-        urllib.request.urlretrieve(YAMNET_TFLITE_URL, YAMNET_MODEL_PATH)
-        print("[yamnet] Model downloaded.")
-
-    if not YAMNET_CLASSES_PATH.exists():
-        print(f"[yamnet] Downloading class map to {YAMNET_CLASSES_PATH}...")
-        urllib.request.urlretrieve(YAMNET_CLASSES_URL, YAMNET_CLASSES_PATH)
-        print("[yamnet] Class map downloaded.")
-
-
-if __name__ == "__main__":
-    import sys
-    if "--download" in sys.argv:
-        _ensure_downloaded()
-        print("YAMNet model files ready.")
-    else:
-        print("Usage: python -m src.audio.classifier --download")

@@ -21,9 +21,6 @@ dependencies = [
     # Real-time transcription with speaker diarization
     "deepgram-sdk>=3.0.0",
     "websockets>=12.0",
-    # Audio classification (YAMNet)
-    "tflite-runtime>=2.14.0",
-    "resampy>=0.4.0",
     # NOTE: picamera2 and hailort must be installed via system packages on the Pi.
     # See scripts/setup.sh for instructions.
 ]
