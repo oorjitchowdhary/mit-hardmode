@@ -33,9 +33,11 @@ STEPS_PER_REV = 4096  # half-step mode
 TICK_STEPS = STEPS_PER_REV // 60  # one "second" tick = 6°
 
 # Delays (seconds per half-step)
-NORMAL_DELAY = 0.002   # normal clock tick speed
-GOOD_STOP_DELAY = 0.012  # very slow before stopping (6x slower than normal)
-FAST_DELAY = 0.0005    # bad vibe — 4x faster than normal
+NORMAL_DELAY = 0.003   # normal clock tick speed
+GOOD_STOP_DELAY = 0.012  # very slow before stopping
+FAST_DELAY = 0.001     # bad vibe — 3x faster than normal
+
+BAD_REVOLUTIONS = 3    # number of fast revolutions for bad vibe
 
 
 class StepperClock:
@@ -107,9 +109,9 @@ class StepperClock:
         self._sleep_check(0.3, "normal")
 
     def _do_good_reaction(self) -> None:
-        """Gradually slow down over ~5 seconds, stop, wait 15s, resume normal."""
-        # Phase 1: gradually slow down (15 ticks, getting slower)
-        total_ticks = 15
+        """Slow down quickly over 2 seconds, then stop."""
+        # Quick slowdown — 4 ticks getting slower
+        total_ticks = 4
         for t in range(total_ticks):
             if not self._running:
                 return
@@ -120,28 +122,26 @@ class StepperClock:
                     return
                 self._do_step(delay)
             self._release()
-            # Pause grows longer as it slows (0.3s → 1.5s)
-            self._sleep_check(0.3 + frac * 1.2, "good")
+            self._sleep_check(0.2 + frac * 0.3, "good")
 
-        # Phase 2: fully stopped for remaining time up to 15s total
+        # Stopped — hold until mode changes externally
         self._release()
-        self._sleep_check(15.0, "good")
-
-        # Return to normal
-        self._set_mode("normal")
+        while self._running and self._get_mode() == "good":
+            time.sleep(0.1)
 
     def _do_bad_reaction(self) -> None:
-        """Spin fast (4x speed) for 10 full revolutions, then normal for 15s."""
-        # Phase 1: fast spin — 10 revolutions, no pauses, continuous
-        total_steps = STEPS_PER_REV * 10
+        """Spin fast for several revolutions, then hold until mode changes."""
+        total_steps = STEPS_PER_REV * BAD_REVOLUTIONS
         for _ in range(total_steps):
-            if not self._running:
+            if not self._running or self._get_mode() != "bad":
+                self._release()
                 return
             self._do_step(FAST_DELAY)
         self._release()
 
-        # Phase 2: back to normal ticking for 15 seconds
-        self._set_mode("normal")
+        # Hold until mode changes externally
+        while self._running and self._get_mode() == "bad":
+            time.sleep(0.1)
 
     def _sleep_check(self, duration: float, expected_mode: str) -> None:
         """Sleep that exits early if mode changes or shutdown."""
@@ -158,6 +158,10 @@ class StepperClock:
     def bad_vibe(self) -> None:
         """Trigger bad vibe reaction."""
         self._set_mode("bad")
+
+    def set_normal(self) -> None:
+        """Return to normal clock ticking."""
+        self._set_mode("normal")
 
     def stop(self) -> None:
         self._running = False

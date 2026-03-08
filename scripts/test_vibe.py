@@ -240,11 +240,25 @@ def main() -> None:
                 print("[motor] Good vibe — slowing down and stopping...")
                 motor.good_vibe()
             elif score == 0:
-                print("[motor] Bad vibe — speeding up for 10 revolutions...")
+                print("[motor] Bad vibe — speeding up...")
                 motor.bad_vibe()
 
-            # Hold the result on screen for 15s while motor reacts
-            time.sleep(15.0)
+            # Hold the result on screen for 10s while motor reacts
+            time.sleep(10.0)
+
+            # Phase 4: Neutral — motor back to normal ticking, 15s countdown
+            print("[vibe] Neutral — 15s cooldown...")
+            motor.set_normal()
+            with lock:
+                transcript_lines.clear()
+            neutral_end = time.time() + 15.0
+            while time.time() < neutral_end and running.is_set():
+                remaining = int(neutral_end - time.time())
+                with lock:
+                    state["vibe"] = f"Neutral ({remaining}s)"
+                    state["score"] = -1
+                update_display()
+                time.sleep(1.0)
 
     t1 = threading.Thread(target=audio_sender, daemon=True)
     t2 = threading.Thread(target=transcript_receiver, daemon=True)
