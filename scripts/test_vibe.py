@@ -178,29 +178,29 @@ def main() -> None:
     # --- Thread 3: periodic vibe analysis via Claude ---
     def vibe_analyzer():
         while running.is_set():
-            # Phase 1: Neutral — collect transcript with countdown
-            print("\n[vibe] Neutral — listening for 15s...")
+            # ── Phase 1: LISTENING (15s) ──
+            print("\n[vibe] Phase: LISTENING")
             with lock:
                 transcript_lines.clear()
-            collect_end = time.time() + VIBE_CHECK_INTERVAL
-            while time.time() < collect_end and running.is_set():
-                remaining = int(collect_end - time.time())
+            listen_end = time.time() + VIBE_CHECK_INTERVAL
+            while time.time() < listen_end and running.is_set():
+                remaining = int(listen_end - time.time())
                 with lock:
                     state["vibe"] = f"Listening ({remaining}s)"
                     state["score"] = -1
                 update_display()
                 time.sleep(1.0)
 
-            # Phase 2: Analyze
+            # ── Phase 2: ANALYZING ──
             with lock:
                 if not transcript_lines:
-                    print("[vibe] No speech detected, listening again...")
+                    print("[vibe] No speech detected, restarting...")
                     continue
                 recent = list(transcript_lines)
                 transcript_lines.clear()
 
             full_transcript = "\n".join(recent)
-            print("[vibe] Analyzing...")
+            print("[vibe] Phase: ANALYZING")
             with lock:
                 state["vibe"] = "Analyzing..."
                 state["score"] = -1
@@ -229,14 +229,13 @@ def main() -> None:
                 elif resp_line.startswith("VIBE:"):
                     vibe = resp_line.split(":", 1)[1].strip()
 
-            # Phase 3: Show result immediately
-            print(f"[vibe] score={score} vibe={vibe}")
+            # ── Phase 3: RESULT (15s) — show score, motor reacts ──
+            print(f"[vibe] Phase: RESULT — score={score} vibe={vibe}")
             with lock:
                 state["vibe"] = vibe
                 state["score"] = score
             update_display()
 
-            # Drive stepper motor based on score — hold for 15s
             if score == 1:
                 print("[motor] Good vibe — stopping for 15s...")
                 motor.good_vibe()
@@ -244,11 +243,24 @@ def main() -> None:
                 print("[motor] Bad vibe — fast for 15s...")
                 motor.bad_vibe()
 
-            # Hold result on screen for 15s while motor reacts
-            time.sleep(15.0)
+            # Hold result on screen for 15s
+            result_end = time.time() + 15.0
+            while time.time() < result_end and running.is_set():
+                time.sleep(0.5)
 
-            # Back to normal ticking, start next listening cycle
+            # ── Phase 4: NEUTRAL (15s) — motor normal, countdown ──
+            print("[vibe] Phase: NEUTRAL")
             motor.set_normal()
+            with lock:
+                transcript_lines.clear()
+            neutral_end = time.time() + 15.0
+            while time.time() < neutral_end and running.is_set():
+                remaining = int(neutral_end - time.time())
+                with lock:
+                    state["vibe"] = f"Neutral ({remaining}s)"
+                    state["score"] = -1
+                update_display()
+                time.sleep(1.0)
 
     t1 = threading.Thread(target=audio_sender, daemon=True)
     t2 = threading.Thread(target=transcript_receiver, daemon=True)
