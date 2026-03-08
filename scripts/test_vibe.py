@@ -217,14 +217,14 @@ def main() -> None:
                 print(f"[audio] category={audio_result['category']} "
                       f"music={audio_result['music_score']:.2f} "
                       f"speech={audio_result['speech_score']:.2f} "
-                      f"top={audio_result['top_class']} "
+                      f"energy={audio_result['energy']:.4f} "
                       f"brainrot={audio_result['is_brainrot']}")
 
-            # If YAMNet detects brain rot (music, no speech), skip Claude
+            # If audio classifier detects brain rot (music, no speech), skip Claude
             if audio_result and audio_result["is_brainrot"]:
                 score = 0
-                vibe = f"Brain rot ({audio_result['top_class']})"
-                print(f"[vibe] YAMNet detected brain rot — skipping Claude")
+                vibe = "Brain rot detected"
+                print(f"[vibe] Audio classifier detected brain rot — skipping Claude")
             else:
                 # Use transcript + Claude for conversation analysis
                 with lock:
@@ -237,13 +237,13 @@ def main() -> None:
 
                 full_transcript = "\n".join(recent)
 
-                # Include YAMNet context in the prompt
+                # Include audio analysis context in the prompt
                 audio_context = ""
                 if audio_result:
                     audio_context = (
                         f"\nAudio analysis: category={audio_result['category']}, "
                         f"music_score={audio_result['music_score']:.2f}, "
-                        f"top_sound={audio_result['top_class']}\n"
+                        f"speech_score={audio_result['speech_score']:.2f}\n"
                     )
 
                 response = claude.ask(
