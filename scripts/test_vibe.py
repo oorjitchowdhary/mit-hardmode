@@ -220,21 +220,33 @@ def main() -> None:
                       f"energy={audio_result['energy']:.4f} "
                       f"brainrot={audio_result['is_brainrot']}")
 
-            # If audio classifier detects brain rot (music, no speech), skip Claude
+            # Check if we have transcript
+            with lock:
+                has_transcript = len(transcript_lines) > 0
+
+            # Audio present but no transcript = likely music/video playing
+            audio_no_speech = (
+                audio_result
+                and audio_result["energy"] > 0.01
+                and not has_transcript
+            )
+
             if audio_result and audio_result["is_brainrot"]:
                 score = 0
                 vibe = "Brain rot detected"
-                print(f"[vibe] Audio classifier detected brain rot — skipping Claude")
+                print("[vibe] Audio classifier detected brain rot — skipping Claude")
+            elif audio_no_speech:
+                score = 0
+                vibe = "Passive media consumption"
+                print("[vibe] Audio detected but no speech — likely watching videos")
+            elif not has_transcript:
+                # True silence — no audio energy and no transcript
+                print("[vibe] Silence detected, restarting...")
+                continue
             else:
-                # Use transcript + Claude for conversation analysis
                 with lock:
-                    if not transcript_lines:
-                        # No speech and no brain rot — silence, restart
-                        print("[vibe] No speech or music detected, restarting...")
-                        continue
                     recent = list(transcript_lines)
                     transcript_lines.clear()
-
                 full_transcript = "\n".join(recent)
 
                 # Include audio analysis context in the prompt
