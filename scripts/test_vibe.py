@@ -3,7 +3,7 @@ Real-time conversation vibe check.
 
 Streams audio from the USB mic to Deepgram for transcription with speaker
 diarization, then periodically asks Claude to assess the conversation vibe.
-Results are shown on the OLED display.
+Results are shown on the OLED display and a servo reacts physically.
 
 Usage:
     python3 scripts/test_vibe.py
@@ -12,24 +12,26 @@ Usage:
 import json
 import signal
 import sys
+import textwrap
 import threading
 import time
 
 import numpy as np
 import sounddevice as sd
 import websockets.sync.client as ws_client
+from PIL import Image, ImageDraw, ImageFont
 
 from config.settings import (
     AUDIO_CHANNELS,
     AUDIO_DEVICE,
     AUDIO_SAMPLE_RATE,
     DEEPGRAM_API_KEY,
+    OLED_HEIGHT,
+    OLED_WIDTH,
 )
-from PIL import Image, ImageDraw, ImageFont
-
-from config.settings import OLED_HEIGHT, OLED_WIDTH
 from src.display.oled import OLEDDisplay
 from src.llm.client import ClaudeClient
+from src.servo.motor import ServoController
 
 # How often (in seconds) to send transcript to Claude for vibe analysis
 VIBE_CHECK_INTERVAL = 15.0
@@ -54,30 +56,52 @@ def main() -> None:
 
     display = OLEDDisplay()
     claude = ClaudeClient()
+    servo = ServoController()
     transcript_lines: list[str] = []
-    state = {"vibe": "...", "transcript": ""}
+    state = {"vibe": "...", "score": -1}  # score: 1=good, 0=bad, -1=unknown
     lock = threading.Lock()
     running = threading.Event()
     running.set()
     font = ImageFont.load_default()
 
     def update_display():
-        """Show vibe centered on the full display."""
-        import textwrap
+        """Show vibe score and description on the full display."""
         with lock:
             vibe = state["vibe"]
+            score = state["score"]
 
         img = Image.new("1", (OLED_WIDTH, OLED_HEIGHT), 0)
         draw = ImageDraw.Draw(img)
 
         # Title bar
-        draw.rectangle((0, 0, OLED_WIDTH - 1, 11), fill=1)
-        draw.text((1, 2), "VIBE CHECK", font=font, fill=0)
+        draw.rectangle((0, 0, OLED_WIDTH - 1, 13), fill=1)
+        draw.text((1, 3), "VIBE CHECK", font=font, fill=0)
 
-        # Vibe text below
-        vibe_lines = textwrap.wrap(vibe, width=21) or [""]
+        # Score indicator
+        if score == 1:
+            label = "GOOD"
+        elif score == 0:
+            label = "BAD"
+        else:
+            label = "..."
+        # Right-align the score label in the title bar
+        label_x = OLED_WIDTH - len(label) * 6 - 2
+        draw.text((label_x, 3), label, font=font, fill=0)
+
+        # Big circle indicator: filled = good, empty = bad
+        cx, cy, r = 20, 38, 16
+        if score == 1:
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=1)
+        elif score == 0:
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=1)
+        else:
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=1)
+            draw.text((cx - 3, cy - 4), "?", font=font, fill=1)
+
+        # Vibe text on the right side
+        vibe_lines = textwrap.wrap(vibe, width=12) or [""]
         for i, line in enumerate(vibe_lines[:4]):
-            draw.text((0, 16 + i * 12), line, font=font, fill=1)
+            draw.text((44, 18 + i * 12), line, font=font, fill=1)
 
         display._device.display(img)
 
@@ -137,7 +161,6 @@ def main() -> None:
             if not text:
                 continue
 
-            # Extract speaker labels from words
             words = alt.get("words", [])
             speaker = None
             if words:
@@ -161,7 +184,6 @@ def main() -> None:
             with lock:
                 if not transcript_lines:
                     continue
-                # Take everything since last check and clear
                 recent = list(transcript_lines)
                 transcript_lines.clear()
 
@@ -169,15 +191,41 @@ def main() -> None:
             print("\n[vibe] Analyzing conversation vibe...")
             display.show_status("Vibe Check", "Analyzing...")
 
-            vibe = claude.ask(
-                "What is the vibe of this conversation snippet? "
-                "Reply with ONLY 2-4 words. No punctuation, no explanation.\n\n"
+            response = claude.ask(
+                "Analyze this conversation snippet. Reply in EXACTLY this format:\n"
+                "SCORE: 0 or 1 (0=bad/negative/tense/awkward, 1=good/positive/friendly/productive)\n"
+                "VIBE: 2-4 words describing the vibe\n\n"
+                "Nothing else. Example:\n"
+                "SCORE: 1\n"
+                "VIBE: Excited and hopeful\n\n"
                 f"{full_transcript}"
             )
-            print(f"[vibe] {vibe}\n")
+
+            # Parse response
+            score = -1
+            vibe = response.strip()
+            for resp_line in response.strip().split("\n"):
+                resp_line = resp_line.strip()
+                if resp_line.startswith("SCORE:"):
+                    try:
+                        score = int(resp_line.split(":")[1].strip()[0])
+                    except (ValueError, IndexError):
+                        pass
+                elif resp_line.startswith("VIBE:"):
+                    vibe = resp_line.split(":", 1)[1].strip()
+
+            print(f"[vibe] score={score} vibe={vibe}\n")
+
             with lock:
                 state["vibe"] = vibe
+                state["score"] = score
             update_display()
+
+            # Drive servo based on score
+            if score == 1:
+                threading.Thread(target=servo.good_vibe, daemon=True).start()
+            elif score == 0:
+                threading.Thread(target=servo.bad_vibe, daemon=True).start()
 
     t1 = threading.Thread(target=audio_sender, daemon=True)
     t2 = threading.Thread(target=transcript_receiver, daemon=True)
@@ -196,6 +244,7 @@ def main() -> None:
         ws.close()
     except Exception:
         pass
+    servo.stop()
     display.clear()
     print("[vibe] Done.")
 
