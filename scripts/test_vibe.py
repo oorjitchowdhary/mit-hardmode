@@ -68,16 +68,41 @@ def main() -> None:
     transcript_lines: list[str] = []
     audio_buffer: list[np.ndarray] = []
     state = {"vibe": "...", "score": -1}  # score: 1=good, 0=bad, -1=unknown
+    # Doom clock: total seconds elapsed, can go up to 28:00:00
+    clock = {"seconds": 0, "frozen": False}
     lock = threading.Lock()
     running = threading.Event()
     running.set()
     font = ImageFont.load_default()
 
+    def clock_to_str() -> str:
+        """Format clock seconds as HH:MM:SS (up to 28:00:00)."""
+        with lock:
+            s = clock["seconds"]
+        s = min(s, 28 * 3600)  # cap at 28:00:00
+        h = int(s // 3600)
+        m = int((s % 3600) // 60)
+        sec = int(s % 60)
+        return f"{h:02d}:{m:02d}:{sec:02d}"
+
+    def clock_ticker():
+        """Background thread that ticks the clock every second."""
+        while running.is_set():
+            time.sleep(1.0)
+            with lock:
+                if not clock["frozen"]:
+                    clock["seconds"] += 1
+
+    clock_thread = threading.Thread(target=clock_ticker, daemon=True)
+    clock_thread.start()
+
     def update_display():
-        """Show vibe score and description on the full display."""
+        """Show doom clock, vibe score, and description."""
         with lock:
             vibe = state["vibe"]
             score = state["score"]
+
+        time_str = clock_to_str()
 
         img = Image.new("1", (OLED_WIDTH, OLED_HEIGHT), 0)
         draw = ImageDraw.Draw(img)
@@ -86,33 +111,33 @@ def main() -> None:
         draw.rectangle((0, 0, OLED_WIDTH - 1, 13), fill=1)
         draw.text((1, 3), "VIBE", font=font, fill=0)
 
-        # Score indicator
+        # Score indicator in title bar
         if score == 1:
             label = "GOOD"
         elif score == 0:
             label = "BAD"
         else:
             label = "..."
-        # Right-align the score label in the title bar
         bbox = font.getbbox(label)
         label_w = bbox[2] - bbox[0]
         label_x = OLED_WIDTH - label_w - 4
         draw.text((label_x, 3), label, font=font, fill=0)
 
-        # Big circle indicator: filled = good, empty = bad
-        cx, cy, r = 20, 38, 16
-        if score == 1:
-            draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=1)
-        elif score == 0:
-            draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=1)
-        else:
-            draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=1)
-            draw.text((cx - 3, cy - 4), "?", font=font, fill=1)
+        # Doom clock — large, centered
+        clock_bbox = font.getbbox(time_str)
+        clock_w = clock_bbox[2] - clock_bbox[0]
+        draw.text(((OLED_WIDTH - clock_w) // 2, 18), time_str, font=font, fill=1)
 
-        # Vibe text on the right side
-        vibe_lines = textwrap.wrap(vibe, width=12) or [""]
-        for i, line in enumerate(vibe_lines[:4]):
-            draw.text((44, 18 + i * 12), line, font=font, fill=1)
+        # Frozen indicator
+        with lock:
+            frozen = clock["frozen"]
+        if frozen:
+            draw.text(((OLED_WIDTH - clock_w) // 2 - 2, 18), "*", font=font, fill=1)
+
+        # Vibe text below clock
+        vibe_lines = textwrap.wrap(vibe, width=21) or [""]
+        for i, line in enumerate(vibe_lines[:3]):
+            draw.text((0, 32 + i * 11), line, font=font, fill=1)
 
         display._device.display(img)
 
@@ -306,20 +331,28 @@ def main() -> None:
 
             if score == 1:
                 print("[motor] Good vibe — stopping for 15s...")
+                print("[clock] Freezing clock")
                 motor.good_vibe()
+                with lock:
+                    clock["frozen"] = True
             elif score == 0:
                 print("[motor] Bad vibe — fast for 15s...")
+                print("[clock] Adding 4 hours")
                 motor.bad_vibe()
+                with lock:
+                    clock["seconds"] += 4 * 3600  # add 4 hours
 
-            # Hold result on screen for 15s
+            # Hold result on screen for 15s, update display each second for clock
             result_end = time.time() + 15.0
             while time.time() < result_end and running.is_set():
-                time.sleep(0.5)
+                update_display()
+                time.sleep(1.0)
 
             # ── Phase 4: NEUTRAL (15s) — motor normal, countdown ──
             print("[vibe] Phase: NEUTRAL")
             motor.set_normal()
             with lock:
+                clock["frozen"] = False  # resume clock ticking
                 transcript_lines.clear()
             neutral_end = time.time() + 15.0
             while time.time() < neutral_end and running.is_set():
