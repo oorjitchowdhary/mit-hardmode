@@ -32,7 +32,7 @@ from src.display.oled import OLEDDisplay
 from src.llm.client import ClaudeClient
 
 # How often (in seconds) to send transcript to Claude for vibe analysis
-VIBE_CHECK_INTERVAL = 15.0
+VIBE_CHECK_INTERVAL = 10.0
 
 # Deepgram streaming endpoint with diarization enabled
 DG_URL = (
@@ -62,29 +62,22 @@ def main() -> None:
     font = ImageFont.load_default()
 
     def update_display():
-        """Draw split screen: transcript on top, vibe on bottom."""
+        """Show vibe centered on the full display."""
+        import textwrap
         with lock:
-            txt = state["transcript"]
             vibe = state["vibe"]
 
         img = Image.new("1", (OLED_WIDTH, OLED_HEIGHT), 0)
         draw = ImageDraw.Draw(img)
 
-        # Top half: latest transcript (lines 0-2, ~30px)
-        import textwrap
-        lines = textwrap.wrap(txt, width=21) or [""]
-        for i, line in enumerate(lines[:3]):
-            draw.text((0, i * 10), line, font=font, fill=1)
+        # Title bar
+        draw.rectangle((0, 0, OLED_WIDTH - 1, 11), fill=1)
+        draw.text((1, 2), "VIBE CHECK", font=font, fill=0)
 
-        # Divider line
-        draw.line((0, 31, OLED_WIDTH - 1, 31), fill=1)
-
-        # Bottom half: vibe (inverted title bar + text)
-        draw.rectangle((0, 33, OLED_WIDTH - 1, 43), fill=1)
-        draw.text((1, 34), "VIBE", font=font, fill=0)
+        # Vibe text below
         vibe_lines = textwrap.wrap(vibe, width=21) or [""]
-        for i, line in enumerate(vibe_lines[:2]):
-            draw.text((0, 45 + i * 10), line, font=font, fill=1)
+        for i, line in enumerate(vibe_lines[:4]):
+            draw.text((0, 16 + i * 12), line, font=font, fill=1)
 
         display._device.display(img)
 
@@ -155,8 +148,6 @@ def main() -> None:
 
             with lock:
                 transcript_lines.append(line)
-                state["transcript"] = line
-            update_display()
 
     # --- Thread 3: periodic vibe analysis via Claude ---
     def vibe_analyzer():
