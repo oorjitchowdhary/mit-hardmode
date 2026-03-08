@@ -171,9 +171,11 @@ def main() -> None:
             display.show_status("Vibe Check", "Analyzing...")
 
             vibe = claude.ask(
-                "You are analyzing a live conversation. Based ONLY on the most recent lines below, "
-                "give a 2-4 word vibe summary. Examples: 'Excited and engaged', 'Tense disagreement', "
-                "'Casual banter', 'Stressed but hopeful'. Just the vibe, nothing else.\n\n"
+                "In exactly two words separated by a period, summarize the vibe of this conversation transcript. "
+                "First word: one adjective describing the overall tone. "
+                "Second part: two to three words describing the outcome or dynamic. "
+                "Format strictly as: 'Adjective. Short phrase.' with nothing else.\n\n"
+                "Transcript:\n"
                 f"{full_transcript}"
             )
             print(f"[vibe] {vibe}\n")
