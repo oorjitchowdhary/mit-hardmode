@@ -178,12 +178,20 @@ def main() -> None:
     # --- Thread 3: periodic vibe analysis via Claude ---
     def vibe_analyzer():
         while running.is_set():
-            # Collect transcript for 15 seconds
-            print("\n[vibe] Collecting for 15s...")
+            # Phase 1: Neutral — collect transcript with countdown
+            print("\n[vibe] Neutral — listening for 15s...")
+            with lock:
+                transcript_lines.clear()
             collect_end = time.time() + VIBE_CHECK_INTERVAL
             while time.time() < collect_end and running.is_set():
-                time.sleep(0.5)
+                remaining = int(collect_end - time.time())
+                with lock:
+                    state["vibe"] = f"Listening ({remaining}s)"
+                    state["score"] = -1
+                update_display()
+                time.sleep(1.0)
 
+            # Phase 2: Analyze
             with lock:
                 if not transcript_lines:
                     continue
@@ -191,8 +199,11 @@ def main() -> None:
                 transcript_lines.clear()
 
             full_transcript = "\n".join(recent)
-            print("[vibe] Analyzing conversation vibe...")
-            display.show_status("Vibe Check", "Analyzing...")
+            print("[vibe] Analyzing...")
+            with lock:
+                state["vibe"] = "Analyzing..."
+                state["score"] = -1
+            update_display()
 
             response = claude.ask(
                 "Analyze this conversation snippet. Reply in EXACTLY this format:\n"
@@ -217,8 +228,8 @@ def main() -> None:
                 elif resp_line.startswith("VIBE:"):
                     vibe = resp_line.split(":", 1)[1].strip()
 
+            # Phase 3: Show result immediately
             print(f"[vibe] score={score} vibe={vibe}")
-
             with lock:
                 state["vibe"] = vibe
                 state["score"] = score
@@ -232,20 +243,8 @@ def main() -> None:
                 print("[motor] Bad vibe — speeding up for 10 revolutions...")
                 motor.bad_vibe()
 
-            # Wait 15s in neutral (motor handles its own return to normal)
-            print("[vibe] Neutral period — 15s until next check...")
-            with lock:
-                state["vibe"] = "Neutral"
-                state["score"] = -1
-                transcript_lines.clear()  # fresh start for next round
-            update_display()
-            neutral_end = time.time() + 15.0
-            while time.time() < neutral_end and running.is_set():
-                remaining = int(neutral_end - time.time())
-                with lock:
-                    state["vibe"] = f"Neutral ({remaining}s)"
-                update_display()
-                time.sleep(1.0)
+            # Hold the result on screen for 15s while motor reacts
+            time.sleep(15.0)
 
     t1 = threading.Thread(target=audio_sender, daemon=True)
     t2 = threading.Thread(target=transcript_receiver, daemon=True)
