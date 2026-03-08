@@ -56,13 +56,17 @@ def main() -> None:
         sys.exit(1)
 
     display = OLEDDisplay()
+    display.show_status("Vibe Check", "Waiting for network...")
+    print("[boot] Waiting 10s for network...")
+    time.sleep(10)
+
     claude = ClaudeClient()
     motor = StepperClock()
     audio_clf = AudioClassifier(sample_rate=AUDIO_SAMPLE_RATE)
     audio_clf.start()
     print("[audio] Classifier ready (numpy spectral analysis).")
     transcript_lines: list[str] = []
-    audio_buffer: list[np.ndarray] = []  # raw audio chunks for YAMNet
+    audio_buffer: list[np.ndarray] = []
     state = {"vibe": "...", "score": -1}  # score: 1=good, 0=bad, -1=unknown
     lock = threading.Lock()
     running = threading.Event()
@@ -190,6 +194,7 @@ def main() -> None:
             print("\n[vibe] Phase: LISTENING")
             with lock:
                 transcript_lines.clear()
+                audio_buffer.clear()
             listen_end = time.time() + VIBE_CHECK_INTERVAL
             while time.time() < listen_end and running.is_set():
                 remaining = int(listen_end - time.time())
