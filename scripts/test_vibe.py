@@ -32,7 +32,7 @@ from src.display.oled import OLEDDisplay
 from src.llm.client import ClaudeClient
 
 # How often (in seconds) to send transcript to Claude for vibe analysis
-VIBE_CHECK_INTERVAL = 10.0
+VIBE_CHECK_INTERVAL = 15.0
 
 # Deepgram streaming endpoint with diarization enabled
 DG_URL = (
