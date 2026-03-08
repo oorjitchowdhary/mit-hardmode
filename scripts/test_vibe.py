@@ -207,12 +207,22 @@ def main() -> None:
             update_display()
 
             response = claude.ask(
-                "Analyze this conversation snippet. Reply in EXACTLY this format:\n"
-                "SCORE: 0 or 1 (0=bad/negative/tense/awkward, 1=good/positive/friendly/productive)\n"
-                "VIBE: 2-4 words describing the vibe\n\n"
+                "Analyze this audio transcript. Reply in EXACTLY this format:\n"
+                "SCORE: 0 or 1\n"
+                "VIBE: 2-4 words\n\n"
+                "SCORE 0 (BAD) if ANY of these are detected:\n"
+                "- Brain rot content (TikTok, reels, shorts, memes, viral trends)\n"
+                "- Doomscrolling or mindless media consumption\n"
+                "- Background sounds of short-form video (rapid audio changes, music clips, notification sounds)\n"
+                "- Negative, tense, awkward, or unproductive conversation\n"
+                "- Slang heavy brain rot language (skibidi, rizz, sigma, etc.)\n\n"
+                "SCORE 1 (GOOD) if:\n"
+                "- Genuine productive conversation, studying, learning\n"
+                "- Positive, friendly, focused, or meaningful interaction\n"
+                "- Working, coding, problem-solving discussion\n\n"
                 "Nothing else. Example:\n"
-                "SCORE: 1\n"
-                "VIBE: Excited and hopeful\n\n"
+                "SCORE: 0\n"
+                "VIBE: Brain rot scrolling\n\n"
                 f"{full_transcript}"
             )
 
