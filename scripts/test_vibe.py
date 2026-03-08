@@ -161,21 +161,17 @@ def main() -> None:
             with lock:
                 if not transcript_lines:
                     continue
-                # Only use the last 20 lines (sliding window)
-                recent = transcript_lines[-20:]
-                full_transcript = "\n".join(recent)
-                # Clear old lines to keep memory bounded
-                transcript_lines[:] = recent
+                # Take everything since last check and clear
+                recent = list(transcript_lines)
+                transcript_lines.clear()
 
+            full_transcript = "\n".join(recent)
             print("\n[vibe] Analyzing conversation vibe...")
             display.show_status("Vibe Check", "Analyzing...")
 
             vibe = claude.ask(
-                "In exactly two words separated by a period, summarize the vibe of this conversation transcript. "
-                "First word: one adjective describing the overall tone. "
-                "Second part: two to three words describing the outcome or dynamic. "
-                "Format strictly as: 'Adjective. Short phrase.' with nothing else.\n\n"
-                "Transcript:\n"
+                "What is the vibe of this conversation snippet? "
+                "Reply with ONLY 2-4 words. No punctuation, no explanation.\n\n"
                 f"{full_transcript}"
             )
             print(f"[vibe] {vibe}\n")
