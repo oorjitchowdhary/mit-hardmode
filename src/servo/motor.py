@@ -35,12 +35,11 @@ class ServoController:
         self._thread.start()
 
     def _loop(self) -> None:
-        """Continuous 0°→180°→0° sweep at current speed."""
+        """Continuous 0°→180° sweep, then snap back to 0° and repeat."""
         while self._running:
             with self._lock:
                 speed = self._speed
             if speed is None:
-                self._servo.value = _POS_90
                 time.sleep(0.1)
                 continue
             # Sweep 0° → 180°
@@ -53,21 +52,14 @@ class ServoController:
                     break
                 self._servo.value = pos
                 time.sleep(speed)
-            # Sweep 180° → 0°
-            for pos in _interpolate(_POS_180, _POS_0, _STEPS):
-                if not self._running:
-                    return
-                with self._lock:
-                    speed = self._speed
-                if speed is None:
-                    break
-                self._servo.value = pos
-                time.sleep(speed)
+            # Snap back to 0°
+            self._servo.value = _POS_0
+            time.sleep(0.05)
 
     def good_vibe(self) -> None:
-        """Slow down and stop at 90°."""
+        """Slow down and stop."""
         with self._lock:
-            self._speed = None
+            self._speed = 0.1
 
     def bad_vibe(self) -> None:
         """Speed up the sweep."""
