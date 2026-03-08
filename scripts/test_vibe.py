@@ -85,7 +85,9 @@ def main() -> None:
         else:
             label = "..."
         # Right-align the score label in the title bar
-        label_x = OLED_WIDTH - len(label) * 6 - 2
+        bbox = font.getbbox(label)
+        label_w = bbox[2] - bbox[0]
+        label_x = OLED_WIDTH - label_w - 4
         draw.text((label_x, 3), label, font=font, fill=0)
 
         # Big circle indicator: filled = good, empty = bad
